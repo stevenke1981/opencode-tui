@@ -1,0 +1,63 @@
+{
+  "name": "opencode-status-footer",
+  "version": "1.0.0",
+  "description": "Persistent token, activity time, and project progress status bar for OpenCode TUI",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    },
+    "./tui": {
+      "import": "./dist/tui.js",
+      "types": "./dist/tui.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20",
+    "opencode": ">=1.17.6"
+  },
+  "scripts": {
+    "build": "bun scripts/build.mjs && tsc -p tsconfig.json --emitDeclarationOnly",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test tests/core.test.mjs tests/project.test.mjs && bun test tests/tui.test.mjs",
+    "validate": "npm run typecheck && npm test && npm run clean && npm run build && npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.17.6",
+    "@opentui/core": ">=0.3.4",
+    "@opentui/solid": ">=0.3.4"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/core": {
+      "optional": true
+    },
+    "@opentui/solid": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "solid-js": "^1.9.9"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.17.6",
+    "@opentui/core": "0.3.4",
+    "@opentui/keymap": "0.3.4",
+    "@opentui/solid": "0.3.4",
+    "@types/node": "^24.0.0",
+    "jsonc-parser": "^3.3.1",
+    "typescript": "^5.9.3"
+  }
+}
