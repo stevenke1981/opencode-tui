@@ -18,29 +18,37 @@ OpenCode TUI 的持久狀態列 plugin，顯示：
 
 需求：Node.js 20+、OpenCode 1.17.6+、Git。
 
-```powershell
-cd D:\qwen_tts\opencode-tui
+```bash
+cd /path/to/opencode-tui
 npm install
 npm run validate
 ```
 
-安裝到目前專案：
+### Linux / macOS
 
-```powershell
-.\scripts\install.ps1 -ProjectPath D:\your-project
+```bash
+# 安裝到目前專案
+./scripts/install.sh --project-path /path/to/your-project
+
+# 安裝到全域 OpenCode 設定
+./scripts/install.sh --global
 ```
 
-安裝到全域 OpenCode 設定：
+### Windows
 
 ```powershell
-.\scripts\install.ps1 -Global
+.\scripts\uninstall.ps1 -ProjectPath D:\your-project -RemoveState
 ```
 
-底層使用已驗證的 OpenCode installer：
+## 給 AI 代理的指引
 
-```powershell
-opencode plugin file:D:/qwen_tts/opencode-tui
-opencode plugin file:D:/qwen_tts/opencode-tui --global
+參見 `AGENTS.md` — 包含專案架構、慣例與代理操作指示。
+
+### 底層使用已驗證的 OpenCode installer
+
+```bash
+opencode plugin file:/path/to/opencode-tui
+opencode plugin file:/path/to/opencode-tui --global
 ```
 
 Installer 會偵測 package 的 `./server` 與 `./tui` exports，並分別更新 `opencode.json` 與 `tui.json`。server entry 預設為 no-op，除非啟用 `toastFallback`。
@@ -162,7 +170,7 @@ Toast 不是持久 UI，因此只建議作為相容 workaround。若上游未來
 
 ## 測試與驗證
 
-```powershell
+```bash
 npm run validate
 ```
 
@@ -179,7 +187,7 @@ npm run validate
 
 除錯：
 
-```powershell
+```bash
 opencode --print-logs --log-level DEBUG
 ```
 
@@ -187,15 +195,20 @@ opencode --print-logs --log-level DEBUG
 
 ## 移除
 
-只移除精確的 `file:D:/qwen_tts/opencode-tui` config entry，不改其他 plugin：
+只移除精確的 plugin config entry，不改其他 plugin：
+
+### Linux / macOS
+
+```bash
+./scripts/uninstall.sh --project-path /path/to/your-project
+./scripts/uninstall.sh --global
+./scripts/uninstall.sh --project-path /path/to/your-project --remove-state
+```
+
+### Windows
 
 ```powershell
 .\scripts\uninstall.ps1 -ProjectPath D:\your-project
 .\scripts\uninstall.ps1 -Global
-```
-
-連同 project metrics state 移除：
-
-```powershell
 .\scripts\uninstall.ps1 -ProjectPath D:\your-project -RemoveState
 ```
