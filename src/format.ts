@@ -1,4 +1,4 @@
-import type { MetricsSnapshot, ProjectProgress, StatusFooterOptions, TokenUsage } from "./types.js"
+import type { AgentUsage, MetricsSnapshot, ProjectProgress, StatusFooterOptions, TokenUsage } from "./types.js"
 import { estimateCost, totalTokens } from "./usage.js"
 
 export function compactNumber(value: number): string {
@@ -29,7 +29,36 @@ export function progressBar(percent: number, width: number): string {
   return `${"#".repeat(filled)}${"-".repeat(Math.max(0, width - filled))}`
 }
 
-export function formatTokens(usage: TokenUsage, options: StatusFooterOptions, compact = false): string {
+export function formatSpeed(speed: number): string {
+  if (speed <= 0) return ""
+  return `▲ ${speed.toFixed(1)} tok/s`
+}
+
+export function formatAgentCosts(agents: AgentUsage[], compact = false): string {
+  if (agents.length === 0) return ""
+  const top = agents.slice(0, 3) // show top 3 agents
+  const parts = top.map((a) => {
+    const cost = a.cost > 0.01 ? `$${a.cost.toFixed(2)}` : `<¢1`
+    return compact ? `${a.agent.slice(0, 6)}:${cost}` : `${a.agent}: ${cost}`
+  })
+  if (agents.length > 3) parts.push(compact ? `+${agents.length - 3}` : `+${agents.length - 3} more`)
+  return compact ? parts.join(" ") : parts.join(" | ")
+}
+
+export function formatBudgetStatus(
+  totalCost: number,
+  maxCostUsd: number,
+  warnAtPercent: number,
+  compact = false,
+): string {
+  if (maxCostUsd <= 0) return ""
+  const percent = (totalCost / maxCostUsd) * 100
+  if (percent >= 100) return compact ? "⚠ BUDGET EXCEEDED" : "⚠ Budget exceeded!"
+  if (percent >= warnAtPercent) return compact ? `⚠ ${percent.toFixed(0)}%` : `⚠ Budget: ${percent.toFixed(0)}% used`
+  return ""
+}
+
+export function formatTokens(usage: TokenUsage, options: StatusFooterOptions, compact = false, modelId?: string): string {
   const output = options.showReasoning ? usage.output : usage.output + usage.reasoning
   const details = compact
     ? `I:${compactNumber(usage.input)} O:${compactNumber(output)}`
@@ -41,7 +70,7 @@ export function formatTokens(usage: TokenUsage, options: StatusFooterOptions, co
         ? ` C:${compactNumber(usage.cacheRead)}/${compactNumber(usage.cacheWrite)}`
         : ` / C: ${compactNumber(usage.cacheRead)}r+${compactNumber(usage.cacheWrite)}w`
       : ""
-  const cost = estimateCost(usage, options.pricing)
+  const cost = estimateCost(usage, options.pricing, modelId)
   const costText = options.showCost && cost > 0 ? ` ~$${cost.toFixed(cost < 10 ? 2 : 1)}` : ""
   return compact
     ? `Tok ${compactNumber(totalTokens(usage))} (${details}${reasoning}${cache})${costText}`
@@ -66,8 +95,25 @@ export function formatStatusLine(
   progress: ProjectProgress,
   options: StatusFooterOptions,
   compact = false,
+  speed = 0,
+  agents: AgentUsage[] = [],
+  totalCost = 0,
+  modelId?: string,
 ): string {
-  return [formatTokens(snapshot.tokens, options, compact), formatTime(snapshot, compact), formatProgress(progress, options, compact)].join(
-    compact ? " | " : "  |  ",
-  )
+  const parts: string[] = [
+    formatTokens(snapshot.tokens, options, compact, modelId),
+    formatTime(snapshot, compact),
+    formatProgress(progress, options, compact),
+  ]
+
+  const speedText = options.showSpeed ? formatSpeed(speed) : ""
+  if (speedText) parts.push(speedText)
+
+  const agentText = options.showAgentCosts ? formatAgentCosts(agents, compact) : ""
+  if (agentText) parts.push(agentText)
+
+  const budgetStatus = formatBudgetStatus(totalCost, options.budget.maxCostUsd, options.budget.warnAtPercent, compact)
+  if (budgetStatus) parts.push(budgetStatus)
+
+  return parts.join(compact ? " | " : "  |  ")
 }

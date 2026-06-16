@@ -74,6 +74,24 @@ export type PricingOptions = {
   cacheWritePerMillion: number
 }
 
+export type BudgetConfig = {
+  maxCostUsd: number
+  warnAtPercent: number
+  mode: "warn" | "block"
+}
+
+export type AgentUsage = {
+  agent: string
+  cost: number
+  tokens: number
+  messageCount: number
+}
+
+export type TokenSpeed = {
+  current: number
+  average: number
+}
+
 export type StatusFooterOptions = {
   scope: DisplayScope
   refreshIntervalMs: number
@@ -96,4 +114,7 @@ export type StatusFooterOptions = {
   toggleKey: string
   toastFallback: boolean
   toastIntervalMs: number
+  showSpeed: boolean
+  showAgentCosts: boolean
+  budget: BudgetConfig
 }

@@ -5,7 +5,9 @@ import { formatStatusLine } from "./format.js"
 import { parseOptions } from "./options.js"
 import { emptyProgress, scanProject } from "./project.js"
 import { MetricsStore } from "./state.js"
-import type { DisplayScope, ProjectProgress } from "./types.js"
+import type { AgentUsage, DisplayScope, ProjectProgress } from "./types.js"
+import { extractAgentUsage, mergeAgentUsage, sortedAgentUsage } from "./usage.js"
+import { TokenSpeedTracker } from "./speed.js"
 
 const PLUGIN_ID = "opencode.status-footer"
 const SCOPE_KEY = `${PLUGIN_ID}.scope`
@@ -64,6 +66,8 @@ const tui: TuiPlugin = async (api, rawOptions) => {
   let directory = ""
   let refreshRunning = false
   let scanAt = 0
+  const speedTracker = new TokenSpeedTracker()
+  const agentUsageMap = new Map<string, AgentUsage>()
 
   async function ensureStore(): Promise<MetricsStore | undefined> {
     const nextDirectory = api.state.path.directory || api.state.path.worktree
@@ -87,6 +91,20 @@ const tui: TuiPlugin = async (api, rawOptions) => {
         const info = api.state.session.get(sessionID)
         metrics.reconcileSession(sessionID, api.state.session.messages(sessionID), info)
         metrics.updateTodos(sessionID, api.state.session.todo(sessionID))
+
+        // Extract agent usage from session messages
+        if (options.showAgentCosts || options.budget.maxCostUsd > 0) {
+          agentUsageMap.clear()
+          const rawMessages = api.state.session.messages(sessionID)
+          if (Array.isArray(rawMessages)) {
+            for (const msg of rawMessages) {
+              const extracted = extractAgentUsage(msg)
+              if (extracted) {
+                mergeAgentUsage(agentUsageMap, extracted.agent, extracted.usage)
+              }
+            }
+          }
+        }
       }
 
       const now = Date.now()
@@ -97,7 +115,10 @@ const tui: TuiPlugin = async (api, rawOptions) => {
       }
       const snapshot = metrics.snapshot(scope(), sessionID, now)
       const compact = api.renderer.terminalWidth < options.compactBreakpoint
-      setLine(formatStatusLine(snapshot, progress(), options, compact))
+      const speed = speedTracker.getSpeed(now)
+      const agents = sortedAgentUsage(agentUsageMap)
+      const totalCost = agents.reduce((sum, a) => sum + a.cost, 0)
+      setLine(formatStatusLine(snapshot, progress(), options, compact, speed.current, agents, totalCost))
       await metrics.flush()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -118,10 +139,19 @@ const tui: TuiPlugin = async (api, rawOptions) => {
       const sessionID = eventSessionID(event)
       if (!sessionID || !store) return
       store.updateMessage(sessionID, event.properties.info)
+      // Streaming finished — reset speed tracker for next response
+      speedTracker.reset()
     }),
     api.event.on("message.removed", (event) => {
       if (!store) return
       store.removeMessage(event.properties.sessionID, event.properties.messageID)
+    }),
+    api.event.on("message.part.delta", (event) => {
+      if (!event.properties) return
+      // Delta events carry the field name and delta text
+      const props = event.properties as Record<string, unknown>
+      const text = typeof props.delta === "string" ? props.delta : typeof props.content === "string" ? props.content : ""
+      if (text) speedTracker.recordChars(text)
     }),
     api.event.on("message.part.updated", (event) => {
       if (!store) return

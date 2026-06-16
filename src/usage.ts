@@ -1,4 +1,5 @@
-import type { MessageUsage, PricingOptions, TokenUsage } from "./types.js"
+import type { AgentUsage, MessageUsage, PricingOptions, TokenUsage } from "./types.js"
+import { resolveModelPricing } from "./pricing.js"
 
 export const EMPTY_USAGE: TokenUsage = {
   input: 0,
@@ -51,13 +52,95 @@ export function sumUsage(values: Iterable<TokenUsage>): TokenUsage {
   return total
 }
 
-export function estimateCost(usage: TokenUsage, pricing: PricingOptions): number {
+export function agentKey(info: Record<string, unknown>): string {
+  // Try common agent attribution fields
+  const agent =
+    typeof info.agent === "string"
+      ? info.agent
+      : typeof info.initiatorAgent === "string"
+        ? info.initiatorAgent
+        : typeof info.executingAgent === "string"
+          ? info.executingAgent
+          : ""
+  return agent || "default"
+}
+
+export function extractAgentUsage(
+  value: unknown,
+  pricingInput?: PricingOptions,
+  messageID?: string,
+): { agent: string; usage: MessageUsage } | undefined {
+  const info = record(value)
+  if (info.role !== "assistant") return undefined
+  const tokens = record(info.tokens)
+  const cache = record(tokens.cache)
+  const agent = agentKey(info)
+  const costRaw = finite(info.cost)
+
+  // If no explicit cost, estimate from model-specific pricing
+  let cost = costRaw
+  if (cost === 0) {
+    const modelPricing = pricingInput ?? resolveModelPricing(typeof info.model === "string" ? info.model : undefined)
+    if (modelPricing) {
+      const input = finite(tokens.input)
+      const output = finite(tokens.output) + finite(tokens.reasoning)
+      const cacheRead = finite(cache.read)
+      const cacheWrite = finite(cache.write)
+      cost =
+        (input * modelPricing.inputPerMillion +
+          output * modelPricing.outputPerMillion +
+          cacheRead * modelPricing.cacheReadPerMillion +
+          cacheWrite * modelPricing.cacheWritePerMillion) /
+        1_000_000
+    }
+  }
+
+  return {
+    agent,
+    usage: {
+      input: finite(tokens.input),
+      output: finite(tokens.output),
+      reasoning: finite(tokens.reasoning),
+      cacheRead: finite(cache.read),
+      cacheWrite: finite(cache.write),
+      cost,
+      updatedAt: typeof info.time === "object" && info.time !== null ? finite((info.time as Record<string, unknown>).completed) || Date.now() : Date.now(),
+    },
+  }
+}
+
+export function mergeAgentUsage(map: Map<string, AgentUsage>, key: string, messageUsage: MessageUsage): void {
+  const existing = map.get(key)
+  const total = totalTokens(messageUsage)
+  if (existing) {
+    existing.cost += messageUsage.cost
+    existing.tokens += total
+    existing.messageCount += 1
+  } else {
+    map.set(key, { agent: key, cost: messageUsage.cost, tokens: total, messageCount: 1 })
+  }
+}
+
+export function sortedAgentUsage(map: Map<string, AgentUsage>): AgentUsage[] {
+  return Array.from(map.values()).sort((a, b) => b.cost - a.cost)
+}
+
+export function estimateCost(
+  usage: TokenUsage,
+  pricing: PricingOptions,
+  modelId?: string,
+): number {
   if (usage.cost > 0) return usage.cost
+
+  // Use model-specific pricing from catalog if available
+  const modelPricing = modelId ? resolveModelPricing(modelId) : undefined
+  const active = modelPricing ?? pricing
+
   return (
-    usage.input * pricing.inputPerMillion +
-    (usage.output + usage.reasoning) * pricing.outputPerMillion +
-    usage.cacheRead * pricing.cacheReadPerMillion +
-    usage.cacheWrite * pricing.cacheWritePerMillion
+    usage.input * active.inputPerMillion +
+    (usage.output + usage.reasoning) * active.outputPerMillion +
+    usage.cacheRead * active.cacheReadPerMillion +
+    usage.cacheWrite * active.cacheWritePerMillion
   ) / 1_000_000
 }
 

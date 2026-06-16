@@ -1,4 +1,4 @@
-import type { DisplayScope, PricingOptions, ProgressWeights, StatusFooterOptions } from "./types.js"
+import type { BudgetConfig, DisplayScope, PricingOptions, ProgressWeights, StatusFooterOptions } from "./types.js"
 
 const DEFAULT_WEIGHTS: ProgressWeights = {
   tasks: 0.5,
@@ -11,6 +11,12 @@ const DEFAULT_PRICING: PricingOptions = {
   outputPerMillion: 0,
   cacheReadPerMillion: 0,
   cacheWritePerMillion: 0,
+}
+
+const DEFAULT_BUDGET: BudgetConfig = {
+  maxCostUsd: 0,
+  warnAtPercent: 80,
+  mode: "warn",
 }
 
 export const DEFAULT_OPTIONS: StatusFooterOptions = {
@@ -35,6 +41,9 @@ export const DEFAULT_OPTIONS: StatusFooterOptions = {
   toggleKey: "ctrl+shift+s",
   toastFallback: false,
   toastIntervalMs: 30_000,
+  showSpeed: true,
+  showAgentCosts: false,
+  budget: { ...DEFAULT_BUDGET },
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -82,6 +91,15 @@ function pricing(value: unknown): PricingOptions {
   }
 }
 
+function budget(value: unknown): BudgetConfig {
+  const input = record(value)
+  return {
+    maxCostUsd: number(input.maxCostUsd, DEFAULT_BUDGET.maxCostUsd, 0, 1_000_000),
+    warnAtPercent: number(input.warnAtPercent, DEFAULT_BUDGET.warnAtPercent, 0, 100),
+    mode: input.mode === "block" ? "block" : "warn",
+  }
+}
+
 export function parseOptions(value: unknown): StatusFooterOptions {
   const input = record(value)
   const patterns = Array.isArray(input.todoPatterns)
@@ -116,5 +134,8 @@ export function parseOptions(value: unknown): StatusFooterOptions {
     toggleKey: typeof input.toggleKey === "string" && input.toggleKey.trim() ? input.toggleKey : DEFAULT_OPTIONS.toggleKey,
     toastFallback: boolean(input.toastFallback, DEFAULT_OPTIONS.toastFallback),
     toastIntervalMs: number(input.toastIntervalMs, DEFAULT_OPTIONS.toastIntervalMs, 10_000, 600_000),
+    showSpeed: boolean(input.showSpeed, DEFAULT_OPTIONS.showSpeed),
+    showAgentCosts: boolean(input.showAgentCosts, DEFAULT_OPTIONS.showAgentCosts),
+    budget: budget(input.budget),
   }
 }
